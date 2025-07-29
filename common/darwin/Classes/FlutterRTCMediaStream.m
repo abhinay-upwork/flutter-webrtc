@@ -7,6 +7,7 @@
 #import "VideoProcessingAdapter.h"
 #import "LocalVideoTrack.h"
 #import "LocalAudioTrack.h"
+#import "client_flutter_sdk-Swift.h"
 
 @implementation RTCMediaStreamTrack (Flutter)
 
@@ -290,6 +291,42 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       BOOL requestAccessForVideo = [videoConstraints isKindOfClass:[NSNumber class]]
                                        ? [videoConstraints boolValue]
                                        : [videoConstraints isKindOfClass:[NSDictionary class]];
+
+NSArray *optional = videoConstraints[@"optional"];
+NSString *sourceType = nil;
+
+for (NSDictionary *item in optional) {
+  if ([item isKindOfClass:[NSDictionary class]] && item[@"source"]) {
+    sourceType = item[@"source"];
+    break;
+  }
+}
+
+if ([sourceType isEqualToString:@"blurred"] || [sourceType isEqualToString:@"segmented"]) {
+  RTCMediaStream *mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:[[NSUUID UUID] UUIDString]];
+
+  RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
+
+  NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"selfie_segmenter" ofType:@"tflite"];
+  if (!modelPath) {
+    NSLog(@"Segmentation model not found in bundle");
+    // result([FlutterError errorWithCode:@"model_missing"
+    //                            message:@"TFLite segmentation model not found"
+    //                            details:nil]);
+    return;
+  }
+
+  SegmentationProcessor *processor = [[SegmentationProcessor alloc] initWithSource:videoSource modelPath:modelPath];
+  [processor startCapture];
+
+  RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource
+                                                                       trackId:@"blurred_track"];
+  [mediaStream addVideoTrack:videoTrack];
+
+  successCallback(mediaStream);
+  return;
+}
+
 #if !TARGET_IPHONE_SIMULATOR
       if (requestAccessForVideo) {
         [self requestAccessForMediaType:AVMediaTypeVideo

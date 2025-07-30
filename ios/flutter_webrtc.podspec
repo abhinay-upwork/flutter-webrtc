@@ -8,19 +8,22 @@ Pod::Spec.new do |s|
   s.description      = <<-DESC
 A new flutter plugin project.
                        DESC
-  s.homepage         = 'https://github.com/cloudwebrtc/flutter-webrtc'
+  s.homepage         = 'https://github.com/abhinay-upwork/flutter-webrtc'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'CloudWebRTC' => 'duanweiwei1982@gmail.com' }
+  s.author           = { 'WebRTC-Fork' => 'abhinayvangipuram@upwork.com' }
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
+  s.source_files = 'Classes/**/*.{h,m,mm,swift}'
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
-  s.dependency 'WebRTC-SDK', '137.7151.04'
+  s.dependency 'WebRTC-SDK', '137.7151.02'
+  s.dependency 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
   s.ios.deployment_target = '13.0'
   s.static_framework = true
   s.pod_target_xcconfig = {
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++14',
-    'USER_HEADER_SEARCH_PATHS' => 'Classes/**/*.h'
+    'USER_HEADER_SEARCH_PATHS' => 'Classes/**/*.h',
+    'DEFINES_MODULE' => 'YES'
   }
   s.libraries = 'c++'
+  s.swift_version = '5.0'
 end

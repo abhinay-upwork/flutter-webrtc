@@ -7,7 +7,7 @@
 #import "VideoProcessingAdapter.h"
 #import "LocalVideoTrack.h"
 #import "LocalAudioTrack.h"
-#import "flutter_webrtc-Swift.h"
+#import "SegmentationProcessor.h"
 
 @implementation RTCMediaStreamTrack (Flutter)
 

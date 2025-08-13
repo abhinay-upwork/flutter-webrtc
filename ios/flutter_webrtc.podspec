@@ -16,7 +16,7 @@ A new flutter plugin project.
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
   s.dependency 'WebRTC-SDK', '137.7151.02'
-  s.dependency 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
+  s.dependency 'TensorFlowLiteC', '~> 0.0.1-nightly'
   s.ios.deployment_target = '13.0'
   s.static_framework = true
   s.pod_target_xcconfig = {

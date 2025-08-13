@@ -31,9 +31,8 @@
       return nil;
     }
 
-    const TfLiteIntArray *dims = TfLiteTensorDims(inputTensor);
-    _inputHeight = dims->data[1];
-    _inputWidth = dims->data[2];
+    _inputHeight = TfLiteTensorDim(inputTensor, 1);
+    _inputWidth = TfLiteTensorDim(inputTensor, 2);
   }
   return self;
 }

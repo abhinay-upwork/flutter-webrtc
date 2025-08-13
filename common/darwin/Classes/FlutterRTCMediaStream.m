@@ -309,12 +309,14 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
             for (NSDictionary *item in optional) {
                 if ([item isKindOfClass:[NSDictionary class]] && item[@"source"]) {
                     sourceType = item[@"source"];
+                    NSLog(@"[WebRTC] Found source type: %@", sourceType);
                     break;
                 }
             }
             
             // ✅ Handle custom segmentation source
-            if ([sourceType isEqualToString:@"blurred"] || [sourceType isEqualToString:@"virtual"]) {
+            if ([sourceType isEqualToString:@"blur"] || [sourceType isEqualToString:@"image"]) {
+                NSLog(@"[WebRTC] Using custom segmentation source: %@", sourceType);
                 RTCMediaStream *segmentedStream = [self.peerConnectionFactory mediaStreamWithStreamId:[[NSUUID UUID] UUIDString]];
                 
                 RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
@@ -325,10 +327,11 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                     errorCallback(@"ModelMissing", @"TFLite model was not downloaded to temp directory");
                     return;
                 }
+                NSLog(@"[WebRTC] TFLite model found in NSTemporaryDirectory");
                 
                 // SegmentationProcessor is a Swift class
                 SegmentationProcessor *processor = [[SegmentationProcessor alloc] initWithSource:videoSource modelPath:modelPath];
-                if ([sourceType isEqualToString:@"blurred"]) {
+                if ([sourceType isEqualToString:@"blur"]) {
                     [processor setMode:@"blur"];
                 } else {
                     [processor setMode:@"virtual"];

@@ -22,6 +22,7 @@
         _source = source;
         _ciContext = [CIContext contextWithOptions:nil];
         _segmenter = [[MediaPipeSegmenter alloc] initWithModelPath:modelPath];
+        _segmenterWrapper = [[MediaPipeSegmenterWrapper alloc] initWithModelPath:modelPath];
         _mode = mode;
     }
     return self;
@@ -118,14 +119,8 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         [self sendToWebRTC:pixelBuffer];
         return;
     }
-    
-    if (!self.segmenterWrapper) {
-        self.segmenterWrapper = [[MediaPipeSegmenterWrapper alloc] init];
-        [self.segmenterWrapper setup:modelPath];
-    }
 
-    MPImage *mask = [self.segmenterWrapper segment:pixelBuffer];
-    // CVPixelBufferRef mask = [self.segmenter runSegmentationOn:pixelBuffer];
+    CVPixelBufferRef mask = [self.segmenterWrapper segmentWithPixelBuffer:pixelBuffer];
     if (!mask) {
         [self sendToWebRTC:pixelBuffer];
         return;

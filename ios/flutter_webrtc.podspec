@@ -22,10 +22,7 @@ A new flutter plugin project.
   s.ios.deployment_target = '13.0'
   s.static_framework = true
   s.pod_target_xcconfig = {
-    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++14',
-    'USER_HEADER_SEARCH_PATHS' => 'Classes/**/*.h',
-    'DEFINES_MODULE' => 'YES',
-    'SWIFT_OBJC_BRIDGING_HEADER' => 'Classes/BridgingHeader/flutter_webrtc-Bridging-Header.h'
+    'DEFINES_MODULE' => 'YES'
   }
   s.libraries = 'c++'
   s.swift_version = '5.0'

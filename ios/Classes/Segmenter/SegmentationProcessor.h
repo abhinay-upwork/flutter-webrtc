@@ -6,10 +6,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface SegmentationProcessor : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate>
 
-- (instancetype)initWithSource:(RTCVideoSource *)source modelPath:(NSString *)modelPath;
-- (void)setMode:(NSString *)mode; // "blur", "virtual", "none"
+- (instancetype)initWithSource:(RTCVideoSource *)source modelPath:(NSString *)modelPath mode:(NSString *)mode;
 - (void)setVirtualImageFromPath:(NSString *)path;
 - (void)startCapture;
+- (void)stopCapture;
 
 @end
 

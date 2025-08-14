@@ -18,12 +18,14 @@ A new flutter plugin project.
   s.dependency 'WebRTC-SDK', '137.7151.02'
   s.dependency 'TensorFlowLiteC'
   s.dependency 'TensorFlowLiteSwift'
+  s.dependency 'MediaPipeTasksVision'
   s.ios.deployment_target = '13.0'
   s.static_framework = true
   s.pod_target_xcconfig = {
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++14',
     'USER_HEADER_SEARCH_PATHS' => 'Classes/**/*.h',
-    'DEFINES_MODULE' => 'YES'
+    'DEFINES_MODULE' => 'YES',
+    'SWIFT_OBJC_BRIDGING_HEADER' => 'Classes/BridgingHeader/flutter_webrtc-Bridging-Header.h'
   }
   s.libraries = 'c++'
   s.swift_version = '5.0'

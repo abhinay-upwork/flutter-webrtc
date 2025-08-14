@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "FlutterWebRTCPlugin.h"
+#import "SegmentationProcessor.h"
 
 @interface RTCMediaStreamTrack (Flutter)
 @property(nonatomic, strong, nonnull) id settings;
@@ -20,4 +21,7 @@
 - (void)selectAudioInput:(nonnull NSString*)deviceId result:(nullable FlutterResult)result;
 
 - (void)selectAudioOutput:(nonnull NSString*)deviceId result:(nullable FlutterResult)result;
+
+@property (nonatomic, strong) SegmentationProcessor * _Nullable segmentationProcessor;
+
 @end

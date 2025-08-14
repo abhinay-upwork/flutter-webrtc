@@ -7,7 +7,6 @@
 #import "VideoProcessingAdapter.h"
 #import "LocalVideoTrack.h"
 #import "LocalAudioTrack.h"
-#import "SegmentationProcessor.h"
 
 @implementation RTCMediaStreamTrack (Flutter)
 
@@ -18,6 +17,7 @@
 - (void)setSettings:(id)settings {
     objc_setAssociatedObject(self, @selector(settings), settings, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
+
 @end
 
 @implementation AVCaptureDevice (Flutter)
@@ -56,6 +56,15 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     return @{};
 }
 
+static SegmentationProcessor *_segmentationProcessor = nil;
+
+- (SegmentationProcessor *)segmentationProcessor {
+    return _segmentationProcessor;
+}
+
+- (void)setSegmentationProcessor:(SegmentationProcessor *)processor {
+    _segmentationProcessor = processor;
+}
 
 - (RTCMediaConstraints*)defaultMediaStreamConstraints {
     RTCMediaConstraints* constraints =
@@ -218,7 +227,7 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                 @"enabled" : @(track.isEnabled),
                 @"remote" : @(YES),
                 @"readyState" : @"live",
-                @"settings" : track.settings
+                @"settings" : track.settings == nil ? @{} : track.settings
             }];
         }
         
@@ -302,53 +311,37 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
                 return;
             }
 #endif
-            
-            NSArray *optional = videoConstraints[@"optional"];
-            NSString *sourceType = nil;
-            
-            for (NSDictionary *item in optional) {
-                if ([item isKindOfClass:[NSDictionary class]] && item[@"source"]) {
-                    sourceType = item[@"source"];
-                    NSLog(@"[WebRTC] Found source type: %@", sourceType);
-                    break;
-                }
-            }
-            
-            // ✅ Handle custom segmentation source
-            if ([sourceType isEqualToString:@"blur"] || [sourceType isEqualToString:@"image"]) {
-                NSLog(@"[WebRTC] Using custom segmentation source: %@", sourceType);
-                RTCMediaStream *segmentedStream = [self.peerConnectionFactory mediaStreamWithStreamId:[[NSUUID UUID] UUIDString]];
-                
-                RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
-                
-                NSString *modelPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"selfie_segmenter.tflite"];
-                if (![[NSFileManager defaultManager] fileExistsAtPath:modelPath]) {
-                    NSLog(@"[WebRTC] TFLite model not found in NSTemporaryDirectory");
-                    errorCallback(@"ModelMissing", @"TFLite model was not downloaded to temp directory");
-                    return;
-                }
-                NSLog(@"[WebRTC] TFLite model found in NSTemporaryDirectory");
-                
-                // SegmentationProcessor is a Swift class
-                SegmentationProcessor *processor = [[SegmentationProcessor alloc] initWithSource:videoSource modelPath:modelPath];
-                if ([sourceType isEqualToString:@"blur"]) {
-                    [processor setMode:@"blur"];
-                } else {
-                    [processor setMode:@"virtual"];
-                }
-                [processor startCapture];
-                
-                RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource trackId:@"segmented_track"];
-                [segmentedStream addVideoTrack:videoTrack];
-                
-                successCallback(segmentedStream);
-                return;
-            }
         }
     }
     
     // There are audioTracks and/or videoTracks in mediaStream as requested by
     // constraints so the getUserMedia() is to conclude with success.
+    successCallback(mediaStream);
+}
+
+- (void)processSegmentationWithSourceType:(NSString*)sourceType mediaStream:(RTCMediaStream*)mediaStream success:(NavigatorUserMediaSuccessCallback)successCallback error:(NavigatorUserMediaErrorCallback)errorCallback {
+    NSLog(@"[WebRTC] Using segmentation mode: %@", sourceType);
+    
+    RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
+    
+    NSString *modelPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"selfie_segmenter.tflite"];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:modelPath]) {
+        NSLog(@"[WebRTC] Segmentation model not found at: %@", modelPath);
+        errorCallback(@"ModelMissing", @"TFLite model missing for segmentation");
+        return;
+    }
+    
+    self.segmentationProcessor = [[SegmentationProcessor alloc] initWithSource:videoSource modelPath:modelPath mode:sourceType];
+    [self.segmentationProcessor startCapture];
+    
+    NSString *trackId = [[NSUUID UUID] UUIDString];
+    RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource trackId:trackId];
+    videoTrack.settings = @{};
+    [mediaStream addVideoTrack:videoTrack];
+    
+    LocalVideoTrack *localTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack];
+    self.localTracks[trackId] = localTrack;
+    
     successCallback(mediaStream);
 }
 
@@ -404,8 +397,30 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
     NSString* videoDeviceId = nil;
     NSString* facingMode = nil;
     NSArray<AVCaptureDevice*>* captureDevices = [self captureDevices];
+    NSString *sourceType = nil;
     
     if ([videoConstraints isKindOfClass:[NSDictionary class]]) {
+        
+        NSArray *optional = videoConstraints[@"optional"];
+        for (NSDictionary *item in optional) {
+            if ([item isKindOfClass:[NSDictionary class]]) {
+                if (item[@"source"]) {
+                    sourceType = item[@"source"];
+                }
+            }
+        }
+        
+        // Use segmentation processor for custom source
+        if ([sourceType isEqualToString:@"blur"] || [sourceType isEqualToString:@"image"]) {
+            [self processSegmentationWithSourceType:sourceType mediaStream:mediaStream success:successCallback error:errorCallback];
+            return;
+        } else {
+            if (self.segmentationProcessor != nil) {
+                [self.segmentationProcessor stopCapture];
+                self.segmentationProcessor = nil;
+            }
+        }
+        
         // constraints.video.deviceId
         NSString* deviceId = videoConstraints[@"deviceId"];
         

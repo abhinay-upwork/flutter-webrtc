@@ -24,4 +24,6 @@
 
 @property (nonatomic, strong) SegmentationProcessor * _Nullable segmentationProcessor;
 
+- (void)cleanup;
+
 @end

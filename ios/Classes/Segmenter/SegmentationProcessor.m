@@ -87,6 +87,8 @@
 - (void)stopCapture {
     NSLog(@"[WebRTC] stopCapture called");
     
+    self.mode = @"none";
+
     if (self.session) {
         if ([self.session isRunning]) {
             [self.session stopRunning];

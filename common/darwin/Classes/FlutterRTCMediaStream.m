@@ -339,6 +339,18 @@ static SegmentationProcessor *_segmentationProcessor = nil;
     videoTrack.settings = @{};
     [mediaStream addVideoTrack:videoTrack];
     
+    // Register a stop handler for segmentation video track to cleanup the segmentation processor
+    __weak SegmentationProcessor* weakSegmentationProcessor = self.segmentationProcessor;
+    self.videoCapturerStopHandlers[videoTrack.trackId] = ^(CompletionHandler handler) {
+        NSLog(@"[WebRTC] Stop segmentation processor for trackID %@", videoTrack.trackId);
+        if (weakSegmentationProcessor) {
+            [weakSegmentationProcessor stopCapture];
+        }
+        if (handler) {
+            handler();
+        }
+    };
+    
     LocalVideoTrack *localTrack = [[LocalVideoTrack alloc] initWithTrack:videoTrack];
     self.localTracks[trackId] = localTrack;
     
@@ -415,9 +427,34 @@ static SegmentationProcessor *_segmentationProcessor = nil;
             [self processSegmentationWithSourceType:sourceType mediaStream:mediaStream success:successCallback error:errorCallback];
             return;
         } else {
+            // Properly stop segmentation and ensure normal video capture can resume
             if (self.segmentationProcessor != nil) {
+                NSLog(@"[WebRTC] Stopping segmentation processor to resume normal video capture");
                 [self.segmentationProcessor stopCapture];
                 self.segmentationProcessor = nil;
+                
+                // Clear any existing video tracks from segmentation mode
+                for (RTCVideoTrack *videoTrack in mediaStream.videoTracks) {
+                    [mediaStream removeVideoTrack:videoTrack];
+                    // Also remove from localTracks if it exists
+                    for (NSString *trackId in self.localTracks.allKeys) {
+                        LocalVideoTrack *localTrack = self.localTracks[trackId];
+                        if (localTrack.track == videoTrack) {
+                            [self.localTracks removeObjectForKey:trackId];
+                            break;
+                        }
+                    }
+                }
+                
+                // Stop any existing video capturer to ensure clean transition
+                if (self.videoCapturer) {
+                    [self.videoCapturer stopCaptureWithCompletionHandler:^{
+                        NSLog(@"[WebRTC] Previous video capturer stopped for clean transition");
+                    }];
+                    self.videoCapturer = nil;
+                }
+                
+                NSLog(@"[WebRTC] Segmentation processor stopped, resuming normal video capture");
             }
         }
         
@@ -1044,6 +1081,31 @@ static SegmentationProcessor *_segmentationProcessor = nil;
         maxSupportedFramerate = fmax(maxSupportedFramerate, fpsRange.maxFrameRate);
     }
     return fmin(maxSupportedFramerate, targetFps);
+}
+
+- (void)cleanup {
+    NSLog(@"[WebRTC] FlutterRTCMediaStream cleanup called");
+    
+    // Stop segmentation processor if it's running
+    if (self.segmentationProcessor != nil) {
+        NSLog(@"[WebRTC] Stopping segmentation processor during cleanup");
+        [self.segmentationProcessor stopCapture];
+        self.segmentationProcessor = nil;
+    }
+    
+    // Stop any running video capturer
+    if (self.videoCapturer) {
+        NSLog(@"[WebRTC] Stopping video capturer during cleanup");
+        [self.videoCapturer stopCaptureWithCompletionHandler:^{
+            NSLog(@"[WebRTC] Video capturer stopped during cleanup");
+        }];
+        self.videoCapturer = nil;
+    }
+}
+
+- (void)dealloc {
+    NSLog(@"[WebRTC] FlutterRTCMediaStream dealloc called");
+    [self cleanup];
 }
 
 @end

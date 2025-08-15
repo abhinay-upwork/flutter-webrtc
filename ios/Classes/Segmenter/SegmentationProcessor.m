@@ -1,7 +1,6 @@
 #import "SegmentationProcessor.h"
 #import "MediaPipeSegmenter.h"
 #import <CoreImage/CoreImage.h>
-#import "flutter_webrtc-Swift.h"
 
 @interface SegmentationProcessor ()
 @property(nonatomic, strong) RTCVideoSource *source;
@@ -11,7 +10,6 @@
 @property(nonatomic, strong, nullable) CIImage *virtualBackground;
 @property(nonatomic, strong) NSString *mode;
 @property (nonatomic, strong) AVCaptureVideoDataOutput *videoOutput;
-@property (nonatomic, strong) MediaPipeSegmenterWrapper *segmenterWrapper;
 @end
 
 @implementation SegmentationProcessor
@@ -22,7 +20,6 @@
         _source = source;
         _ciContext = [CIContext contextWithOptions:nil];
         _segmenter = [[MediaPipeSegmenter alloc] initWithModelPath:modelPath];
-        _segmenterWrapper = [[MediaPipeSegmenterWrapper alloc] initWithModelPath:modelPath];
         _mode = mode;
     }
     return self;
@@ -120,10 +117,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         return;
     }
 
-    CVPixelBufferRef mask = [self.segmenterWrapper segmentWithPixelBuffer:pixelBuffer];
+    CVPixelBufferRef mask = [self.segmenter runSegmentationOn:pixelBuffer];
     if (!mask) {
-        [self sendToWebRTC:pixelBuffer];
-        return;
+      [self sendToWebRTC:pixelBuffer];
+      return;
     }
     
     CVPixelBufferRef resultBuffer = NULL;

@@ -65,10 +65,15 @@
         if ([self.session canAddOutput:self.videoOutput]) {
             [self.session addOutput:self.videoOutput];
             
-            // Ensure the video orientation is set
+            // Ensure the video orientation is set and disable mirroring
             AVCaptureConnection *connection = [self.videoOutput connectionWithMediaType:AVMediaTypeVideo];
             if (connection.isVideoOrientationSupported) {
                 connection.videoOrientation = AVCaptureVideoOrientationPortrait;
+            }
+            
+            // Disable video mirroring for natural orientation
+            if (connection.isVideoMirroringSupported) {
+                connection.videoMirrored = NO;
             }
         } else {
             NSLog(@"[WebRTC] Could not add video output");

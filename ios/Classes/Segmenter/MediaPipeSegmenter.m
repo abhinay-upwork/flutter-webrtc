@@ -119,9 +119,10 @@
       for (NSInteger x = 0; x < maskWidth; x++) {
         UInt8 maskValue = maskData[y * maskWidth + x];
         
-        // Apply soft thresholding for smoother edges
-        // MediaPipe typically outputs 0 (background) or 1 (person), so we scale and smooth
-        float normalized = maskValue / 255.0f;
+        // IMPORTANT: MediaPipe SelfieSegmenter outputs 0 for person, 1 for background
+        // But CIBlendWithMask expects 255 for person (show original), 0 for background (show blurred)
+        // So we need to INVERT the mask
+        float normalized = (255 - maskValue) / 255.0f; // Invert the mask
         
         // Soft sigmoid around 0.5 threshold for smoother transitions
         float threshold = 0.5f;

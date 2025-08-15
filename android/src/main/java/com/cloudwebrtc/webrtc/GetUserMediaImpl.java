@@ -48,6 +48,7 @@ import com.cloudwebrtc.webrtc.utils.MediaConstraintsUtils;
 import com.cloudwebrtc.webrtc.utils.ObjectType;
 import com.cloudwebrtc.webrtc.utils.PermissionUtils;
 import com.cloudwebrtc.webrtc.video.LocalVideoTrack;
+import com.cloudwebrtc.webrtc.segmentation.SegmentationProcessor;
 import com.cloudwebrtc.webrtc.video.VideoCapturerInfo;
 
 import org.webrtc.AudioSource;
@@ -346,6 +347,32 @@ public class GetUserMediaImpl {
 
                     if (option.hasKey("sourceId") && option.getType("sourceId") == ObjectType.String) {
                         return option.getString("sourceId");
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Retrieves "source" constraint value for background processing.
+     *
+     * @param mediaConstraints a <tt>ConstraintsMap</tt> which represents "GUM" constraints argument
+     * @return String value of "source" optional "GUM" constraint or <tt>null</tt> if not specified.
+     */
+    private String getSourceConstraint(ConstraintsMap mediaConstraints) {
+        if (mediaConstraints != null
+                && mediaConstraints.hasKey("optional")
+                && mediaConstraints.getType("optional") == ObjectType.Array) {
+            ConstraintsArray optional = mediaConstraints.getArray("optional");
+
+            for (int i = 0, size = optional.size(); i < size; i++) {
+                if (optional.getType(i) == ObjectType.Map) {
+                    ConstraintsMap option = optional.getMap(i);
+
+                    if (option.hasKey("source") && option.getType("source") == ObjectType.String) {
+                        return option.getString("source");
                     }
                 }
             }
@@ -722,6 +749,7 @@ public class GetUserMediaImpl {
         String facingMode = getFacingMode(videoConstraintsMap);
         isFacing = facingMode == null || !facingMode.equals("environment");
         String deviceId = getSourceIdConstraint(videoConstraintsMap);
+        String sourceType = getSourceConstraint(videoConstraintsMap);
         CameraEventsHandler cameraEventsHandler = new CameraEventsHandler();
         Pair<String, VideoCapturer> result = createVideoCapturer(cameraEnumerator, isFacing, deviceId, cameraEventsHandler);
 
@@ -814,6 +842,38 @@ public class GetUserMediaImpl {
 
         LocalVideoTrack localVideoTrack = new LocalVideoTrack(track);
         videoSource.setVideoProcessor(localVideoTrack);
+
+        // Add segmentation processing if source type is specified
+        if (sourceType != null && (sourceType.equals("blur") || sourceType.equals("image"))) {
+            Log.i(TAG, "Setting up segmentation processing with source type: " + sourceType);
+            
+            // Create segmentation processor
+            SegmentationProcessor segmentationProcessor = new SegmentationProcessor(applicationContext);
+            
+            // Get model path - assume it's in app's temp directory
+            String modelPath = applicationContext.getCacheDir().getAbsolutePath() + "/selfie_segmenter.tflite";
+            File modelFile = new File(modelPath);
+            
+            if (modelFile.exists()) {
+                boolean initialized = segmentationProcessor.initialize(modelPath);
+                if (initialized) {
+                    // Set processing mode
+                    if (sourceType.equals("blur")) {
+                        segmentationProcessor.setMode(SegmentationProcessor.Mode.BLUR);
+                    } else if (sourceType.equals("image")) {
+                        segmentationProcessor.setMode(SegmentationProcessor.Mode.VIRTUAL_BACKGROUND);
+                    }
+                    
+                    // Add processor to the video track
+                    localVideoTrack.addProcessor(segmentationProcessor);
+                    Log.i(TAG, "Segmentation processor added successfully");
+                } else {
+                    Log.e(TAG, "Failed to initialize segmentation processor");
+                }
+            } else {
+                Log.e(TAG, "Segmentation model file not found at: " + modelPath);
+            }
+        }
 
         stateProvider.putLocalTrack(track.id(),localVideoTrack);
 

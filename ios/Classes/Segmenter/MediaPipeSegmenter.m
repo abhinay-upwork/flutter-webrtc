@@ -1,13 +1,11 @@
 #import "MediaPipeSegmenter.h"
-#import <TensorFlowLiteC/TensorFlowLiteC.h>
+#import <MediaPipeTasksVision/MediaPipeTasksVision.h>
 #import <CoreImage/CoreImage.h>
 
 @interface MediaPipeSegmenter ()
-@property(nonatomic) TfLiteModel *model;
-@property(nonatomic) TfLiteInterpreterOptions *options;
-@property(nonatomic) TfLiteInterpreter *interpreter;
-@property(nonatomic) int inputWidth;
-@property(nonatomic) int inputHeight;
+@property(nonatomic, strong) MPPImageSegmenter *segmenter;
+@property(nonatomic, strong) CIContext *ciContext;
+@property(nonatomic) NSInteger frameCount;
 @end
 
 @implementation MediaPipeSegmenter
@@ -15,134 +13,172 @@
 - (instancetype)initWithModelPath:(NSString *)modelPath {
   self = [super init];
   if (self) {
-    _model = TfLiteModelCreateFromFile([modelPath UTF8String]);
-    _options = TfLiteInterpreterOptionsCreate();
-    TfLiteInterpreterOptionsSetNumThreads(_options, 2);
-    _interpreter = TfLiteInterpreterCreate(_model, _options);
-
-    if (TfLiteInterpreterAllocateTensors(_interpreter) != kTfLiteOk) {
-      NSLog(@"Failed to allocate tensors.");
+    // Initialize MediaPipe ImageSegmenter with the SelfieSegmenter model
+    MPPImageSegmenterOptions *options = [[MPPImageSegmenterOptions alloc] init];
+    options.baseOptions.modelAssetPath = modelPath;
+    options.shouldOutputCategoryMask = true;
+    options.shouldOutputConfidenceMasks = false;
+    options.runningMode = MPPRunningModeVideo;
+    
+    NSError *error = nil;
+    _segmenter = [[MPPImageSegmenter alloc] initWithOptions:options error:&error];
+    
+    if (error) {
+      NSLog(@"Failed to create MediaPipe ImageSegmenter: %@", error.localizedDescription);
       return nil;
     }
-
-    const TfLiteTensor *inputTensor = TfLiteInterpreterGetInputTensor(_interpreter, 0);
-    if (!inputTensor) {
-      NSLog(@"Failed to get input tensor.");
+    
+    if (!_segmenter) {
+      NSLog(@"Failed to initialize MediaPipe ImageSegmenter");
       return nil;
     }
-
-    _inputHeight = TfLiteTensorDim(inputTensor, 1);
-    _inputWidth = TfLiteTensorDim(inputTensor, 2);
+    
+    // Initialize cached CIContext for better performance
+    _ciContext = [CIContext contextWithOptions:@{
+      kCIContextWorkingColorSpace: [NSNull null],
+      kCIContextOutputColorSpace: [NSNull null]
+    }];
+    
+    _frameCount = 0;
+    
+    NSLog(@"MediaPipe ImageSegmenter initialized successfully with model: %@", modelPath);
   }
   return self;
 }
 
 - (CVPixelBufferRef)runSegmentationOn:(CVPixelBufferRef)pixelBuffer {
   CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-  size_t width = CVPixelBufferGetWidth(pixelBuffer);
-  size_t height = CVPixelBufferGetHeight(pixelBuffer);
+  size_t originalWidth = CVPixelBufferGetWidth(pixelBuffer);
+  size_t originalHeight = CVPixelBufferGetHeight(pixelBuffer);
 
-  // Resize pixel buffer to model input size
-  CIImage *image = [CIImage imageWithCVPixelBuffer:pixelBuffer];
-  CIImage *resized = [image imageByApplyingFilter:@"CILanczosScaleTransform"
-                                withInputParameters:@{
-                                  kCIInputScaleKey: @((float)_inputWidth / width),
-                                  kCIInputAspectRatioKey: @(1.0)
-                                }];
-
-  CIContext *context = [CIContext context];
-  CVPixelBufferRef resizedBuffer = NULL;
-  NSDictionary *attrs = @{
-    (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
-    (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES,
-  };
-  CVPixelBufferCreate(kCFAllocatorDefault,
-                      _inputWidth,
-                      _inputHeight,
-                      kCVPixelFormatType_32BGRA,
-                      (__bridge CFDictionaryRef)attrs,
-                      &resizedBuffer);
-
-  if (!resizedBuffer) {
-    NSLog(@"Failed to create resized pixel buffer");
+  @try {
+    // Create MPImage from CVPixelBuffer
+    NSError *error = nil;
+    MPPImage *mpImage = [[MPPImage alloc] initWithPixelBuffer:pixelBuffer error:&error];
+    
+    if (error) {
+      NSLog(@"Failed to create MPPImage: %@", error.localizedDescription);
+      CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+      return nil;
+    }
+    
+    // Generate timestamp for video mode (MediaPipe requires timestamps for video mode)
+    NSInteger timestampMs = _frameCount * 33; // ~30 FPS (33ms per frame)
+    _frameCount++;
+    
+    // Run MediaPipe segmentation
+    MPPImageSegmenterResult *result = [self.segmenter segmentVideoFrame:mpImage 
+                                                     timestampInMilliseconds:timestampMs 
+                                                                       error:&error];
+    
+    if (error) {
+      NSLog(@"MediaPipe segmentation failed: %@", error.localizedDescription);
+      CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+      return nil;
+    }
+    
+    if (!result || !result.categoryMask) {
+      NSLog(@"No segmentation result or category mask returned");
+      CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+      return nil;
+    }
+    
+    // Extract mask data from MediaPipe result
+    MPPMask *categoryMask = result.categoryMask;
+    NSInteger maskWidth = categoryMask.width;
+    NSInteger maskHeight = categoryMask.height;
+    
+    // Create raw mask buffer at MediaPipe's output resolution
+    CVPixelBufferRef rawMaskBuffer = NULL;
+    NSDictionary *attrs = @{
+      (id)kCVPixelBufferCGImageCompatibilityKey: @YES,
+      (id)kCVPixelBufferCGBitmapContextCompatibilityKey: @YES,
+    };
+    
+    CVReturn cvResult = CVPixelBufferCreate(kCFAllocatorDefault,
+                                           maskWidth,
+                                           maskHeight,
+                                           kCVPixelFormatType_OneComponent8,
+                                           (__bridge CFDictionaryRef)attrs,
+                                           &rawMaskBuffer);
+    
+    if (cvResult != kCVReturnSuccess || !rawMaskBuffer) {
+      NSLog(@"Failed to create raw mask pixel buffer");
+      CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+      return nil;
+    }
+    
+    // Copy mask data with smooth processing
+    CVPixelBufferLockBaseAddress(rawMaskBuffer, 0);
+    uint8_t *maskPixels = CVPixelBufferGetBaseAddress(rawMaskBuffer);
+    size_t maskBytesPerRow = CVPixelBufferGetBytesPerRow(rawMaskBuffer);
+    
+    const UInt8 *maskData = categoryMask.uint8Data;
+    
+    for (NSInteger y = 0; y < maskHeight; y++) {
+      for (NSInteger x = 0; x < maskWidth; x++) {
+        UInt8 maskValue = maskData[y * maskWidth + x];
+        
+        // Apply soft thresholding for smoother edges
+        // MediaPipe typically outputs 0 (background) or 1 (person), so we scale and smooth
+        float normalized = maskValue / 255.0f;
+        
+        // Soft sigmoid around 0.5 threshold for smoother transitions
+        float threshold = 0.5f;
+        float softness = 0.15f;
+        float smoothed = 1.0f / (1.0f + expf(-(normalized - threshold) / softness));
+        
+        // Convert back to 0-255 range
+        maskPixels[y * maskBytesPerRow + x] = (uint8_t)(smoothed * 255.0f);
+      }
+    }
+    CVPixelBufferUnlockBaseAddress(rawMaskBuffer, 0);
+    
+    // Apply edge smoothing and scale to original resolution
+    CIImage *rawMaskImage = [CIImage imageWithCVPixelBuffer:rawMaskBuffer];
+    
+    // Light gaussian blur for anti-aliasing
+    CIImage *smoothedMask = [rawMaskImage imageByApplyingGaussianBlurWithSigma:0.6];
+    
+    // Scale to original video resolution using high-quality interpolation
+    float scaleX = (float)originalWidth / maskWidth;
+    float scaleY = (float)originalHeight / maskHeight;
+    
+    CIImage *finalMask = [smoothedMask imageByApplyingFilter:@"CILanczosScaleTransform"
+                                        withInputParameters:@{
+                                          kCIInputScaleKey: @(scaleX),
+                                          kCIInputAspectRatioKey: @(scaleY / scaleX)
+                                        }];
+    
+    // Create final mask buffer at original resolution
+    CVPixelBufferRef finalMaskBuffer = NULL;
+    CVPixelBufferCreate(kCFAllocatorDefault,
+                        originalWidth,
+                        originalHeight,
+                        kCVPixelFormatType_OneComponent8,
+                        (__bridge CFDictionaryRef)attrs,
+                        &finalMaskBuffer);
+    
+    if (finalMaskBuffer) {
+      CGRect renderRect = CGRectMake(0, 0, originalWidth, originalHeight);
+      [self.ciContext render:finalMask toCVPixelBuffer:finalMaskBuffer bounds:renderRect colorSpace:nil];
+    }
+    
+    CVPixelBufferRelease(rawMaskBuffer);
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    
+    return finalMaskBuffer;
+    
+  } @catch (NSException *exception) {
+    NSLog(@"Exception in MediaPipe segmentation: %@", exception.reason);
     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
     return nil;
   }
-
-  [context render:resized toCVPixelBuffer:resizedBuffer];
-
-  // Prepare input buffer
-  size_t byteCount = _inputWidth * _inputHeight * 3; // RGB
-  uint8_t *inputBuffer = malloc(byteCount);
-  if (!inputBuffer) {
-    CVPixelBufferRelease(resizedBuffer);
-    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-    return nil;
-  }
-
-  // Extract RGB from resizedBuffer (BGRA)
-  CVPixelBufferLockBaseAddress(resizedBuffer, kCVPixelBufferLock_ReadOnly);
-  uint8_t *base = CVPixelBufferGetBaseAddress(resizedBuffer);
-  size_t stride = CVPixelBufferGetBytesPerRow(resizedBuffer);
-
-  for (int y = 0; y < _inputHeight; y++) {
-    for (int x = 0; x < _inputWidth; x++) {
-      size_t index = y * stride + x * 4;
-      size_t offset = (y * _inputWidth + x) * 3;
-      inputBuffer[offset] = base[index + 2];     // R
-      inputBuffer[offset + 1] = base[index + 1]; // G
-      inputBuffer[offset + 2] = base[index];     // B
-    }
-  }
-  CVPixelBufferUnlockBaseAddress(resizedBuffer, kCVPixelBufferLock_ReadOnly);
-  CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-
-  // Set input tensor
-  TfLiteTensor *inputTensor = TfLiteInterpreterGetInputTensor(_interpreter, 0);
-  TfLiteTensorCopyFromBuffer(inputTensor, inputBuffer, byteCount);
-  free(inputBuffer);
-
-  // Run inference
-  if (TfLiteInterpreterInvoke(_interpreter) != kTfLiteOk) {
-    NSLog(@"TFLite interpreter invoke failed.");
-    CVPixelBufferRelease(resizedBuffer);
-    return nil;
-  }
-
-  // Get output tensor
-  const TfLiteTensor *outputTensor = TfLiteInterpreterGetOutputTensor(_interpreter, 0);
-  int outputSize = _inputWidth * _inputHeight;
-  float *outputData = malloc(sizeof(float) * outputSize);
-  TfLiteTensorCopyToBuffer(outputTensor, outputData, sizeof(float) * outputSize);
-
-  // Convert mask to binary grayscale CVPixelBuffer
-  CVPixelBufferRef maskBuffer = NULL;
-  CVPixelBufferCreate(kCFAllocatorDefault,
-                      _inputWidth,
-                      _inputHeight,
-                      kCVPixelFormatType_OneComponent8,
-                      (__bridge CFDictionaryRef)attrs,
-                      &maskBuffer);
-
-  if (maskBuffer) {
-    CVPixelBufferLockBaseAddress(maskBuffer, 0);
-    uint8_t *maskPixels = CVPixelBufferGetBaseAddress(maskBuffer);
-    for (int i = 0; i < outputSize; i++) {
-      float confidence = outputData[i];
-      maskPixels[i] = confidence > 0.5f ? 255 : 0;
-    }
-    CVPixelBufferUnlockBaseAddress(maskBuffer, 0);
-  }
-
-  free(outputData);
-  CVPixelBufferRelease(resizedBuffer);
-  return maskBuffer;
 }
 
 - (void)dealloc {
-  if (_interpreter) TfLiteInterpreterDelete(_interpreter);
-  if (_options) TfLiteInterpreterOptionsDelete(_options);
-  if (_model) TfLiteModelDelete(_model);
+  // MediaPipe objects are automatically managed by ARC
+  NSLog(@"MediaPipeSegmenter deallocated");
 }
 
 @end

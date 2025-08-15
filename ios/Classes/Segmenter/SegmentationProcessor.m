@@ -143,14 +143,30 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 - (CVPixelBufferRef)applyBlurTo:(CVPixelBufferRef)buffer withMask:(CVPixelBufferRef)mask {
     NSLog(@"[WebRTC] Applying blur");
     CIImage *input = [CIImage imageWithCVPixelBuffer:buffer];
-    CIImage *blurred = [input imageByApplyingGaussianBlurWithSigma:10];
     CIImage *maskImage = [CIImage imageWithCVPixelBuffer:mask];
     
+    // Create a more sophisticated blur with multiple passes for better quality
+    CIImage *blurred = [input imageByApplyingGaussianBlurWithSigma:12.0];
+    
+    // Enhance mask contrast slightly to make edges more defined
+    // This takes advantage of the smooth gradients from our optimized segmentation
+    CIImage *enhancedMask = [maskImage imageByApplyingFilter:@"CIColorControls"
+                                        withInputParameters:@{
+                                          kCIInputContrastKey: @1.2,      // Slightly increase contrast
+                                          kCIInputBrightnessKey: @0.0,
+                                          kCIInputSaturationKey: @1.0
+                                        }];
+    
+    // Apply a subtle blur to the mask to ensure ultra-smooth transitions
+    CIImage *smoothMask = [enhancedMask imageByApplyingGaussianBlurWithSigma:0.5];
+    
+    // Use the optimized mask for blending - this preserves the smooth gradients
     CIImage *composite = [input imageByApplyingFilter:@"CIBlendWithMask"
                                   withInputParameters:@{
         kCIInputBackgroundImageKey: blurred,
-        kCIInputMaskImageKey: maskImage
+        kCIInputMaskImageKey: smoothMask
     }];
+    
     return [self renderToPixelBuffer:composite withSize:input.extent.size];
 }
 
@@ -159,12 +175,33 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     
     CIImage *input = [CIImage imageWithCVPixelBuffer:buffer];
     CIImage *maskImage = [CIImage imageWithCVPixelBuffer:mask];
-    CIImage *resizedBG = [self.virtualBackground imageByCroppingToRect:input.extent];
+    
+    // Properly scale and position the virtual background to match input dimensions
+    CGRect inputExtent = input.extent;
+    CIImage *scaledBG = [self.virtualBackground imageByApplyingFilter:@"CILanczosScaleTransform"
+                                                 withInputParameters:@{
+                                                   kCIInputScaleKey: @(inputExtent.size.width / self.virtualBackground.extent.size.width),
+                                                   kCIInputAspectRatioKey: @(inputExtent.size.height / inputExtent.size.width * self.virtualBackground.extent.size.width / self.virtualBackground.extent.size.height)
+                                                 }];
+    
+    // Crop to exact input size to avoid any positioning issues
+    CIImage *resizedBG = [scaledBG imageByCroppingToRect:inputExtent];
+    
+    // Enhance mask contrast slightly for better edge definition
+    CIImage *enhancedMask = [maskImage imageByApplyingFilter:@"CIColorControls"
+                                        withInputParameters:@{
+                                          kCIInputContrastKey: @1.2,
+                                          kCIInputBrightnessKey: @0.0,
+                                          kCIInputSaturationKey: @1.0
+                                        }];
+    
+    // Apply subtle smoothing to ensure seamless transitions
+    CIImage *smoothMask = [enhancedMask imageByApplyingGaussianBlurWithSigma:0.5];
     
     CIImage *composite = [input imageByApplyingFilter:@"CIBlendWithMask"
                                   withInputParameters:@{
         kCIInputBackgroundImageKey: resizedBG,
-        kCIInputMaskImageKey: maskImage
+        kCIInputMaskImageKey: smoothMask
     }];
     return [self renderToPixelBuffer:composite withSize:input.extent.size];
 }

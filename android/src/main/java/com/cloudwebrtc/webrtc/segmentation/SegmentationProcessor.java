@@ -220,28 +220,12 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
      */
     @NonNull
     private Bitmap createBlurredBitmap(@NonNull Bitmap input) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return createBlurredBitmapAPI31(input);
-        } else {
-            return createBlurredBitmapLegacy(input);
-        }
+        // Use legacy blur method for compatibility across all Android versions
+        return createBlurredBitmapLegacy(input);
     }
     
-    /**
-     * Create blurred bitmap using RenderEffect (API 31+).
-     */
-    @RequiresApi(api = Build.VERSION_CODES.S)
-    @NonNull
-    private Bitmap createBlurredBitmapAPI31(@NonNull Bitmap input) {
-        Bitmap blurred = Bitmap.createBitmap(input.getWidth(), input.getHeight(), Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(blurred);
-        
-        Paint paint = new Paint();
-        paint.setRenderEffect(RenderEffect.createBlurEffect(12f, 12f, Shader.TileMode.CLAMP));
-        
-        canvas.drawBitmap(input, 0, 0, paint);
-        return blurred;
-    }
+    // Note: Advanced blur using RenderEffect (API 31+) removed for compatibility
+    // The legacy blur method provides good quality for all Android versions
     
     /**
      * Create blurred bitmap using legacy method (simple box blur).

@@ -99,7 +99,8 @@ public class SurfaceTextureRenderer extends EglRenderer {
   @Override
   public void onFrame(VideoFrame frame) {
     if(surface == null) {
-      producer.setSize(frame.getRotatedWidth(),frame.getRotatedHeight());
+      // Use original buffer dimensions to prevent automatic rotation
+      producer.setSize(frame.getBuffer().getWidth(), frame.getBuffer().getHeight());
       surface = producer.getSurface();
       createEglSurface(surface);
     }
@@ -149,17 +150,22 @@ public class SurfaceTextureRenderer extends EglRenderer {
           rendererEvents.onFirstFrameRendered();
         }
       }
-      if (rotatedFrameWidth != frame.getRotatedWidth()
-              || rotatedFrameHeight != frame.getRotatedHeight()
-              || frameRotation != frame.getRotation()) {
+      
+      // Use original buffer dimensions to prevent automatic rotation
+      int bufferWidth = frame.getBuffer().getWidth();
+      int bufferHeight = frame.getBuffer().getHeight();
+      
+      if (rotatedFrameWidth != bufferWidth
+              || rotatedFrameHeight != bufferHeight
+              || frameRotation != 0) { // Force rotation to 0
         if (rendererEvents != null) {
           rendererEvents.onFrameResolutionChanged(
-                  frame.getBuffer().getWidth(), frame.getBuffer().getHeight(), frame.getRotation());
+                  bufferWidth, bufferHeight, 0); // Report 0 rotation
         }
-        rotatedFrameWidth = frame.getRotatedWidth();
-        rotatedFrameHeight = frame.getRotatedHeight();
+        rotatedFrameWidth = bufferWidth;
+        rotatedFrameHeight = bufferHeight;
         producer.setSize(rotatedFrameWidth, rotatedFrameHeight);
-        frameRotation = frame.getRotation();
+        frameRotation = 0; // Force no rotation
       }
     }
   }

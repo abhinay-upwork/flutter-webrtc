@@ -99,8 +99,8 @@ public class MediaPipeSegmenter {
                 long usedMemory = runtime.totalMemory() - runtime.freeMemory();
                 double memoryUsagePercent = (double) usedMemory / maxMemory * 100;
                 
-                if (memoryUsagePercent > 80) {
-                    Log.w(TAG, "High memory usage (" + String.format("%.1f", memoryUsagePercent) + "%), skipping segmentation");
+                if (memoryUsagePercent > 95) {
+                    Log.w(TAG, "Critical memory usage (" + String.format("%.1f", memoryUsagePercent) + "%), using fallback mask");
                     return createFallbackMask(inputBitmap.getWidth(), inputBitmap.getHeight());
                 }
                 

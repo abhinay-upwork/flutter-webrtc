@@ -101,7 +101,7 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
     }
     
     private long lastProcessTime = 0;
-    private static final long PROCESS_INTERVAL_MS = 100; // ~10 FPS processing (reduced for stability)
+    private static final long PROCESS_INTERVAL_MS = 50; // ~20 FPS processing (balanced performance)
     private int frameSkipCount = 0;
     private static final int MAX_CONSECUTIVE_FAILURES = 5;
     private int consecutiveFailures = 0;
@@ -121,8 +121,14 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
         
         // Skip processing if too many consecutive failures (system protection)
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            Log.w(TAG, "Too many segmentation failures, temporarily disabling processing");
-            return frame;
+            Log.w(TAG, "Too many segmentation failures (" + consecutiveFailures + "), temporarily disabling processing");
+            // Reset after some time to allow recovery
+            if (currentTime - lastProcessTime > 2000) { // 2 seconds
+                Log.i(TAG, "Resetting failure counter after timeout");
+                consecutiveFailures = 0;
+            } else {
+                return frame;
+            }
         }
         
         try {
@@ -142,7 +148,7 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
             // Run segmentation to get mask with timeout protection
             Bitmap maskBitmap = segmenter.runSegmentation(inputBitmap);
             if (maskBitmap == null) {
-                Log.w(TAG, "Segmentation failed, returning original frame");
+                Log.w(TAG, "Segmentation failed (attempt " + (consecutiveFailures + 1) + "/" + MAX_CONSECUTIVE_FAILURES + "), returning original frame");
                 cleanupBitmap(inputBitmap);
                 consecutiveFailures++;
                 return frame;

@@ -95,7 +95,7 @@ public class MediaPipeSegmenter {
                 
                 // Check available memory before processing
                 Runtime runtime = Runtime.getRuntime();
-                long maxMemory = runtime.maxHeapSize();
+                long maxMemory = runtime.maxMemory();
                 long usedMemory = runtime.totalMemory() - runtime.freeMemory();
                 double memoryUsagePercent = (double) usedMemory / maxMemory * 100;
                 

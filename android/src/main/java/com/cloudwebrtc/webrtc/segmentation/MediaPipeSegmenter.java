@@ -205,25 +205,32 @@ public class MediaPipeSegmenter {
             int width = mpImage.getWidth();
             int height = mpImage.getHeight();
             
-            // Create a bitmap to hold the mask data
+            // Get the image buffer - MediaPipe segmentation masks are typically in ByteBuffer format
+            java.nio.ByteBuffer maskBuffer = mpImage.toByteArray();
+            
+            if (maskBuffer == null) {
+                Log.w(TAG, "Could not extract byte buffer from MPImage, using fallback");
+                return createFallbackMask(width, height);
+            }
+            
+            // Create bitmap to hold the mask data
             Bitmap maskBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8);
             
-            // Try to extract pixel data from MPImage
-            // MediaPipe segmentation masks are typically single-channel (grayscale)
+            // Extract mask data from buffer
+            byte[] maskData = new byte[maskBuffer.remaining()];
+            maskBuffer.get(maskData);
             
-            // For segmentation masks, the data is typically in a ByteBuffer format
-            // We'll create a basic mask bitmap for now - this is a simplified implementation
-            // that should work with most segmentation models
-            
-            // Get pixel array
+            // Convert byte data to pixel array
             int[] pixels = new int[width * height];
             
-            // Fill with a basic pattern - in a real implementation, you would extract
-            // the actual mask data from the MPImage's internal buffer
-            // For segmentation, typically 0 = background, 255 = foreground
-            for (int i = 0; i < pixels.length; i++) {
-                // This is a placeholder - real implementation would extract actual mask values
-                pixels[i] = 0xFF808080; // Gray placeholder
+            for (int i = 0; i < Math.min(maskData.length, pixels.length); i++) {
+                // MediaPipe selfie segmentation: 0 = person, 255 = background
+                // Convert to alpha mask where 255 = show original (person), 0 = show processed (background)
+                int maskValue = maskData[i] & 0xFF;
+                
+                // Invert the mask: person areas should be opaque (255), background transparent (0)
+                int alpha = 255 - maskValue;
+                pixels[i] = (alpha << 24) | 0x00FFFFFF; // Set alpha channel
             }
             
             maskBitmap.setPixels(pixels, 0, width, 0, 0, width, height);
@@ -231,19 +238,47 @@ public class MediaPipeSegmenter {
             
         } catch (Exception e) {
             Log.e(TAG, "Failed to extract bitmap from MPImage", e);
+            return createFallbackMask(mpImage.getWidth(), mpImage.getHeight());
+        }
+    }
+    
+    /**
+     * Create a fallback mask that shows the person (center area) and blurs the edges.
+     */
+    @NonNull
+    private Bitmap createFallbackMask(int width, int height) {
+        try {
+            Bitmap fallbackBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8);
+            Canvas canvas = new Canvas(fallbackBitmap);
             
-            // Fallback: create a simple white mask
-            try {
-                int width = mpImage.getWidth();
-                int height = mpImage.getHeight();
-                Bitmap fallbackBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8);
-                Canvas canvas = new Canvas(fallbackBitmap);
-                canvas.drawColor(android.graphics.Color.WHITE);
-                return fallbackBitmap;
-            } catch (Exception fallbackException) {
-                Log.e(TAG, "Fallback bitmap creation also failed", fallbackException);
-                return null;
-            }
+            // Create a simple elliptical mask centered on the image
+            // This assumes the person is roughly in the center of the frame
+            Paint paint = new Paint();
+            paint.setAntiAlias(true);
+            
+            // Fill with transparent (background will be processed)
+            canvas.drawColor(android.graphics.Color.TRANSPARENT);
+            
+            // Draw an ellipse in the center for the person area (opaque)
+            paint.setColor(android.graphics.Color.WHITE);
+            float centerX = width * 0.5f;
+            float centerY = height * 0.4f; // Slightly higher than center for typical selfie framing
+            float radiusX = width * 0.25f;
+            float radiusY = height * 0.35f;
+            
+            canvas.drawOval(centerX - radiusX, centerY - radiusY, 
+                          centerX + radiusX, centerY + radiusY, paint);
+            
+            Log.i(TAG, "Created fallback elliptical mask for segmentation");
+            return fallbackBitmap;
+            
+        } catch (Exception fallbackException) {
+            Log.e(TAG, "Fallback bitmap creation also failed", fallbackException);
+            // Last resort: create a simple center mask
+            Bitmap simpleMask = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8);
+            Canvas canvas = new Canvas(simpleMask);
+            canvas.drawColor(android.graphics.Color.TRANSPARENT);
+            return simpleMask;
         }
     }
     

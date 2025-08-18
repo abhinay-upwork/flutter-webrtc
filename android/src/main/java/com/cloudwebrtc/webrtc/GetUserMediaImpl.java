@@ -821,8 +821,12 @@ public class GetUserMediaImpl {
         }
 
         if (actualSize != null) {
-            info.width = actualSize.width;
-            info.height = actualSize.height;
+            // Use the requested dimensions instead of swapped actual size to prevent rotation
+            // Keep the target aspect ratio instead of adapting to camera's preferred format
+            Log.d(TAG, "Camera suggested size: " + actualSize.width + "x" + actualSize.height + 
+                      ", keeping target: " + targetWidth + "x" + targetHeight);
+            info.width = targetWidth;
+            info.height = targetHeight;
         }
 
         info.cameraEventsHandler = cameraEventsHandler;

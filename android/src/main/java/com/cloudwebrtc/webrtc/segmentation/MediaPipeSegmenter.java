@@ -87,25 +87,37 @@ public class MediaPipeSegmenter {
             }
             
             try {
-                // Check input bitmap validity
+                // Check input bitmap validity and memory pressure
                 if (inputBitmap.isRecycled()) {
                     Log.w(TAG, "Input bitmap is recycled - skipping segmentation");
                     return null;
+                }
+                
+                // Check available memory before processing
+                Runtime runtime = Runtime.getRuntime();
+                long maxMemory = runtime.maxHeapSize();
+                long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+                double memoryUsagePercent = (double) usedMemory / maxMemory * 100;
+                
+                if (memoryUsagePercent > 80) {
+                    Log.w(TAG, "High memory usage (" + String.format("%.1f", memoryUsagePercent) + "%), skipping segmentation");
+                    return createFallbackMask(inputBitmap.getWidth(), inputBitmap.getHeight());
                 }
                 
                 // Convert Bitmap to MPImage
                 MPImage mpImage = new BitmapImageBuilder(inputBitmap).build();
                 
                 // Generate timestamp for video mode (MediaPipe requires timestamps)
-                long timestampMs = frameCount * 33; // ~30 FPS (33ms per frame)
+                // Reduced frequency to match processing interval
+                long timestampMs = frameCount * 100; // ~10 FPS (100ms per frame)
                 frameCount++;
                 
-                // Run segmentation
+                // Run segmentation with timeout protection
                 ImageSegmenterResult result = imageSegmenter.segmentForVideo(mpImage, timestampMs);
                 
                 if (result == null || !result.categoryMask().isPresent()) {
-                    Log.w(TAG, "No segmentation result returned");
-                    return null;
+                    Log.w(TAG, "No segmentation result returned, using fallback");
+                    return createFallbackMask(inputBitmap.getWidth(), inputBitmap.getHeight());
                 }
                 
                 // Get the category mask
@@ -113,16 +125,19 @@ public class MediaPipeSegmenter {
                 Bitmap rawMaskBitmap = extractBitmapFromMPImage(categoryMask);
                 
                 if (rawMaskBitmap == null) {
-                    Log.w(TAG, "Failed to extract bitmap from category mask");
-                    return null;
+                    Log.w(TAG, "Failed to extract bitmap from category mask, using fallback");
+                    return createFallbackMask(inputBitmap.getWidth(), inputBitmap.getHeight());
                 }
                 
                 // Create processed mask with smooth edges
                 return createProcessedMask(rawMaskBitmap, inputBitmap.getWidth(), inputBitmap.getHeight());
                 
+            } catch (OutOfMemoryError oom) {
+                Log.e(TAG, "Out of memory during segmentation - using fallback mask", oom);
+                return createFallbackMask(inputBitmap.getWidth(), inputBitmap.getHeight());
             } catch (Exception e) {
-                Log.e(TAG, "Segmentation failed", e);
-                return null;
+                Log.e(TAG, "Segmentation failed - using fallback mask", e);
+                return createFallbackMask(inputBitmap.getWidth(), inputBitmap.getHeight());
             }
         }
     }

@@ -738,13 +738,18 @@ public class GetUserMediaImpl {
         // TODO Enable camera2 enumerator
         CameraEnumerator cameraEnumerator;
 
-        if (Camera2Enumerator.isSupported(applicationContext)) {
-            Log.d(TAG, "Creating video capturer using Camera2 API.");
-            cameraEnumerator = new Camera2Enumerator(applicationContext);
-        } else {
-            Log.d(TAG, "Creating video capturer using Camera1 API.");
-            cameraEnumerator = new Camera1Enumerator(true);
-        }
+        // Force Camera1 to prevent automatic rotation issues
+        Log.d(TAG, "Creating video capturer using Camera1 API (forced to prevent rotation).");
+        cameraEnumerator = new Camera1Enumerator(true);
+        
+        // Original Camera2 logic (disabled):
+        // if (Camera2Enumerator.isSupported(applicationContext)) {
+        //     Log.d(TAG, "Creating video capturer using Camera2 API.");
+        //     cameraEnumerator = new Camera2Enumerator(applicationContext);
+        // } else {
+        //     Log.d(TAG, "Creating video capturer using Camera1 API.");
+        //     cameraEnumerator = new Camera1Enumerator(true);
+        // }
 
         String facingMode = getFacingMode(videoConstraintsMap);
         isFacing = facingMode == null || !facingMode.equals("environment");
@@ -987,13 +992,18 @@ public class GetUserMediaImpl {
 
         CameraEnumerator cameraEnumerator;
 
-        if (Camera2Enumerator.isSupported(applicationContext)) {
-            Log.d(TAG, "Creating video capturer using Camera2 API.");
-            cameraEnumerator = new Camera2Enumerator(applicationContext);
-        } else {
-            Log.d(TAG, "Creating video capturer using Camera1 API.");
-            cameraEnumerator = new Camera1Enumerator(true);
-        }
+        // Force Camera1 to prevent automatic rotation issues
+        Log.d(TAG, "Creating video capturer using Camera1 API (forced to prevent rotation).");
+        cameraEnumerator = new Camera1Enumerator(true);
+        
+        // Original Camera2 logic (disabled):
+        // if (Camera2Enumerator.isSupported(applicationContext)) {
+        //     Log.d(TAG, "Creating video capturer using Camera2 API.");
+        //     cameraEnumerator = new Camera2Enumerator(applicationContext);
+        // } else {
+        //     Log.d(TAG, "Creating video capturer using Camera1 API.");
+        //     cameraEnumerator = new Camera1Enumerator(true);
+        // }
         // if sourceId given, use specified sourceId first
         final String[] deviceNames = cameraEnumerator.getDeviceNames();
         for (String name : deviceNames) {

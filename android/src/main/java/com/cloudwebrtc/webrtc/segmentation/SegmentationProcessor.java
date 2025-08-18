@@ -144,7 +144,8 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
             
             // Convert processed bitmap back to VideoFrame
             if (processedBitmap != inputBitmap) {
-                VideoFrame processedFrame = convertBitmapToVideoFrame(processedBitmap, frame.getTimestampNs());
+                // Always create frames with 0 rotation to prevent orientation issues
+                VideoFrame processedFrame = convertBitmapToVideoFrame(processedBitmap, frame.getTimestampNs(), 0);
                 
                 // Performance logging (reduced frequency)
                 long totalTime = System.nanoTime() - startTime;
@@ -372,8 +373,8 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
      * Convert Bitmap to VideoFrame.
      */
     @Nullable
-    private VideoFrame convertBitmapToVideoFrame(@NonNull Bitmap bitmap, long timestampNs) {
-        return VideoFrameUtils.createVideoFrameFromBitmap(bitmap, timestampNs);
+    private VideoFrame convertBitmapToVideoFrame(@NonNull Bitmap bitmap, long timestampNs, int rotation) {
+        return VideoFrameUtils.createVideoFrameFromBitmap(bitmap, timestampNs, rotation);
     }
     
     /**

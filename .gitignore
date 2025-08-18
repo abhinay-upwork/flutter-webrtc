@@ -29,3 +29,8 @@ migrate_working_dir/
 .flutter-plugins
 .flutter-plugins-dependencies
 build/
+
+# Local SSL build scripts (keep these local, don't commit)
+flutter_build_android.sh
+android/gradle_wrapper.sh
+FLUTTER_SSL_SOLUTION.md

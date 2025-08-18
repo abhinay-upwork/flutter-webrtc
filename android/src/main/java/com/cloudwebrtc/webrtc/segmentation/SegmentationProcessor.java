@@ -82,25 +82,35 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
         }
     }
     
+    private long lastProcessTime = 0;
+    private static final long PROCESS_INTERVAL_MS = 33; // ~30 FPS processing
+    private int frameSkipCount = 0;
+    
     @Override
     public VideoFrame onFrame(VideoFrame frame) {
         if (currentMode == Mode.NONE) {
             return frame;
         }
         
-        Log.d(TAG, "Processing frame with mode: " + currentMode);
+        // Skip processing if too soon (performance optimization)
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastProcessTime < PROCESS_INTERVAL_MS) {
+            frameSkipCount++;
+            return frame; // Return original frame without processing
+        }
         
         try {
+            lastProcessTime = currentTime;
+            long startTime = System.nanoTime();
+            
             // Convert VideoFrame to Bitmap
             VideoFrame.I420Buffer i420Buffer = frame.getBuffer().toI420();
             Bitmap inputBitmap = convertI420ToBitmap(i420Buffer);
             
             if (inputBitmap == null) {
-                Log.w(TAG, "Failed to convert VideoFrame to Bitmap");
+                Log.w(TAG, "Failed to convert VideoFrame to Bitmap, returning original");
                 return frame;
             }
-            
-            Log.d(TAG, "Input bitmap size: " + inputBitmap.getWidth() + "x" + inputBitmap.getHeight());
             
             // Run segmentation to get mask
             Bitmap maskBitmap = segmenter.runSegmentation(inputBitmap);
@@ -109,7 +119,7 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
                 return frame;
             }
             
-            Log.d(TAG, "Segmentation successful, mask size: " + maskBitmap.getWidth() + "x" + maskBitmap.getHeight());
+            long segmentationTime = System.nanoTime() - startTime;
             
             // Apply processing based on mode
             Bitmap processedBitmap;
@@ -125,27 +135,51 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
                     break;
             }
             
+            if (processedBitmap == null) {
+                Log.w(TAG, "Failed to process frame, returning original");
+                cleanupBitmap(inputBitmap);
+                cleanupBitmap(maskBitmap);
+                return frame;
+            }
+            
             // Convert processed bitmap back to VideoFrame
-            if (processedBitmap != null && processedBitmap != inputBitmap) {
+            if (processedBitmap != inputBitmap) {
                 VideoFrame processedFrame = convertBitmapToVideoFrame(processedBitmap, frame.getTimestampNs());
                 
+                // Performance logging (reduced frequency)
+                long totalTime = System.nanoTime() - startTime;
+                if (frameSkipCount > 30) { // Log every ~1 second
+                    Log.d(TAG, String.format("Processing stats: Segmentation: %.1fms, Total: %.1fms, Skipped: %d frames", 
+                            segmentationTime / 1_000_000.0, totalTime / 1_000_000.0, frameSkipCount));
+                    frameSkipCount = 0;
+                }
+                
                 // Clean up bitmaps
-                if (!inputBitmap.isRecycled()) inputBitmap.recycle();
-                if (!maskBitmap.isRecycled()) maskBitmap.recycle();
-                if (!processedBitmap.isRecycled()) processedBitmap.recycle();
+                cleanupBitmap(inputBitmap);
+                cleanupBitmap(maskBitmap);
+                cleanupBitmap(processedBitmap);
                 
                 return processedFrame != null ? processedFrame : frame;
             }
             
             // Clean up bitmaps
-            if (!inputBitmap.isRecycled()) inputBitmap.recycle();
-            if (!maskBitmap.isRecycled()) maskBitmap.recycle();
+            cleanupBitmap(inputBitmap);
+            cleanupBitmap(maskBitmap);
             
         } catch (Exception e) {
-            Log.e(TAG, "Error processing video frame", e);
+            Log.e(TAG, "Error processing video frame - returning original to prevent camera issues", e);
         }
         
         return frame;
+    }
+    
+    /**
+     * Safely clean up bitmap to prevent memory leaks.
+     */
+    private void cleanupBitmap(Bitmap bitmap) {
+        if (bitmap != null && !bitmap.isRecycled()) {
+            bitmap.recycle();
+        }
     }
     
     /**

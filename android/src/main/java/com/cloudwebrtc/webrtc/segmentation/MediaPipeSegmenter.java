@@ -82,11 +82,17 @@ public class MediaPipeSegmenter {
     public Bitmap runSegmentation(@NonNull Bitmap inputBitmap) {
         synchronized (segmenterLock) {
             if (imageSegmenter == null) {
-                Log.w(TAG, "ImageSegmenter not initialized");
+                Log.w(TAG, "ImageSegmenter not initialized - skipping segmentation");
                 return null;
             }
             
             try {
+                // Check input bitmap validity
+                if (inputBitmap.isRecycled()) {
+                    Log.w(TAG, "Input bitmap is recycled - skipping segmentation");
+                    return null;
+                }
+                
                 // Convert Bitmap to MPImage
                 MPImage mpImage = new BitmapImageBuilder(inputBitmap).build();
                 

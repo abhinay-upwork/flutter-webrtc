@@ -159,19 +159,31 @@ public class VideoFrameUtils {
     }
     
     /**
-     * Create VideoFrame from Bitmap.
+     * Create VideoFrame from Bitmap with original frame rotation preserved.
+     * @param bitmap Input bitmap
+     * @param timestampNs Timestamp in nanoseconds
+     * @param originalRotation Original frame rotation to preserve
+     * @return VideoFrame or null if conversion fails
+     */
+    @Nullable
+    public static VideoFrame createVideoFrameFromBitmap(@NonNull Bitmap bitmap, long timestampNs, int originalRotation) {
+        VideoFrame.I420Buffer i420Buffer = bitmapToI420(bitmap);
+        if (i420Buffer == null) {
+            return null;
+        }
+        
+        return new VideoFrame(i420Buffer, originalRotation, timestampNs);
+    }
+    
+    /**
+     * Create VideoFrame from Bitmap with no rotation.
      * @param bitmap Input bitmap
      * @param timestampNs Timestamp in nanoseconds
      * @return VideoFrame or null if conversion fails
      */
     @Nullable
     public static VideoFrame createVideoFrameFromBitmap(@NonNull Bitmap bitmap, long timestampNs) {
-        VideoFrame.I420Buffer i420Buffer = bitmapToI420(bitmap);
-        if (i420Buffer == null) {
-            return null;
-        }
-        
-        return new VideoFrame(i420Buffer, 0, timestampNs);
+        return createVideoFrameFromBitmap(bitmap, timestampNs, 0);
     }
     
     /**

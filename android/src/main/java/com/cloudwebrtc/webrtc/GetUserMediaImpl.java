@@ -744,7 +744,7 @@ public class GetUserMediaImpl {
             cameraEnumerator = new Camera2Enumerator(applicationContext);
         } else {
             Log.d(TAG, "Creating video capturer using Camera1 API.");
-            cameraEnumerator = new Camera1Enumerator(false);
+            cameraEnumerator = new Camera1Enumerator(true);
         }
 
         String facingMode = getFacingMode(videoConstraintsMap);
@@ -993,7 +993,7 @@ public class GetUserMediaImpl {
             cameraEnumerator = new Camera2Enumerator(applicationContext);
         } else {
             Log.d(TAG, "Creating video capturer using Camera1 API.");
-            cameraEnumerator = new Camera1Enumerator(false);
+            cameraEnumerator = new Camera1Enumerator(true);
         }
         // if sourceId given, use specified sourceId first
         final String[] deviceNames = cameraEnumerator.getDeviceNames();

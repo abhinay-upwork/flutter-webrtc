@@ -65,14 +65,8 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
 
     public void onFrame(VideoFrame frame) {
         checkNotDisposed();
-        this.isPortrait = isDeviceOrientationPortrait();
-        final int max = Math.max(this.height, this.width);
-        final int min = Math.min(this.height, this.width);
-        if (this.isPortrait) {
-            changeCaptureFormat(min, max, 15);
-        } else {
-            changeCaptureFormat(max, min, 15);
-        }
+        // Remove automatic orientation adjustment to prevent unwanted rotation
+        // Keep the original capture format instead of changing based on device orientation
         capturerObserver.onFrameCaptured(frame);
     }
 
@@ -114,14 +108,9 @@ public class OrientationAwareScreenCapturer implements VideoCapturer, VideoSink 
             final int width, final int height, final int ignoredFramerate) {
         //checkNotDisposed();
 
-        this.isPortrait = isDeviceOrientationPortrait();
-        if (this.isPortrait) {
-            this.width = width;
-            this.height = height;
-        } else {
-            this.height = width;
-            this.width = height;
-        }
+        // Use the requested dimensions directly without swapping based on orientation
+        this.width = width;
+        this.height = height;
 
         mediaProjection = mediaProjectionManager.getMediaProjection(
                 Activity.RESULT_OK, mediaProjectionPermissionResultData);

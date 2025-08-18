@@ -68,7 +68,25 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
      */
     public void setMode(@NonNull Mode mode) {
         this.currentMode = mode;
+        // Reset failure counter when mode changes
+        consecutiveFailures = 0;
         Log.i(TAG, "Segmentation mode set to: " + mode);
+    }
+    
+    /**
+     * Get current processing mode.
+     */
+    @NonNull
+    public Mode getMode() {
+        return currentMode;
+    }
+    
+    /**
+     * Reset failure counter and re-enable processing.
+     */
+    public void resetFailures() {
+        consecutiveFailures = 0;
+        Log.i(TAG, "Segmentation failure counter reset");
     }
     
     /**
@@ -83,8 +101,10 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
     }
     
     private long lastProcessTime = 0;
-    private static final long PROCESS_INTERVAL_MS = 33; // ~30 FPS processing
+    private static final long PROCESS_INTERVAL_MS = 100; // ~10 FPS processing (reduced for stability)
     private int frameSkipCount = 0;
+    private static final int MAX_CONSECUTIVE_FAILURES = 5;
+    private int consecutiveFailures = 0;
     
     @Override
     public VideoFrame onFrame(VideoFrame frame) {
@@ -99,23 +119,32 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
             return frame; // Return original frame without processing
         }
         
+        // Skip processing if too many consecutive failures (system protection)
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            Log.w(TAG, "Too many segmentation failures, temporarily disabling processing");
+            return frame;
+        }
+        
         try {
             lastProcessTime = currentTime;
             long startTime = System.nanoTime();
             
-            // Convert VideoFrame to Bitmap
+            // Convert VideoFrame to Bitmap with memory check
             VideoFrame.I420Buffer i420Buffer = frame.getBuffer().toI420();
             Bitmap inputBitmap = convertI420ToBitmap(i420Buffer);
             
             if (inputBitmap == null) {
                 Log.w(TAG, "Failed to convert VideoFrame to Bitmap, returning original");
+                consecutiveFailures++;
                 return frame;
             }
             
-            // Run segmentation to get mask
+            // Run segmentation to get mask with timeout protection
             Bitmap maskBitmap = segmenter.runSegmentation(inputBitmap);
             if (maskBitmap == null) {
                 Log.w(TAG, "Segmentation failed, returning original frame");
+                cleanupBitmap(inputBitmap);
+                consecutiveFailures++;
                 return frame;
             }
             
@@ -139,6 +168,7 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
                 Log.w(TAG, "Failed to process frame, returning original");
                 cleanupBitmap(inputBitmap);
                 cleanupBitmap(maskBitmap);
+                consecutiveFailures++;
                 return frame;
             }
             
@@ -149,16 +179,19 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
                 
                 // Performance logging (reduced frequency)
                 long totalTime = System.nanoTime() - startTime;
-                if (frameSkipCount > 30) { // Log every ~1 second
-                    Log.d(TAG, String.format("Processing stats: Segmentation: %.1fms, Total: %.1fms, Skipped: %d frames", 
-                            segmentationTime / 1_000_000.0, totalTime / 1_000_000.0, frameSkipCount));
+                if (frameSkipCount > 100) { // Log every ~10 seconds now
+                    Log.d(TAG, String.format("Processing stats: Segmentation: %.1fms, Total: %.1fms, Skipped: %d frames, Failures: %d", 
+                            segmentationTime / 1_000_000.0, totalTime / 1_000_000.0, frameSkipCount, consecutiveFailures));
                     frameSkipCount = 0;
                 }
                 
-                // Clean up bitmaps
+                // Clean up bitmaps aggressively
                 cleanupBitmap(inputBitmap);
                 cleanupBitmap(maskBitmap);
                 cleanupBitmap(processedBitmap);
+                
+                // Reset failure counter on success
+                consecutiveFailures = 0;
                 
                 return processedFrame != null ? processedFrame : frame;
             }
@@ -167,8 +200,16 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
             cleanupBitmap(inputBitmap);
             cleanupBitmap(maskBitmap);
             
+            // Reset failure counter on success
+            consecutiveFailures = 0;
+            
+        } catch (OutOfMemoryError oom) {
+            Log.e(TAG, "Out of memory during frame processing - forcing GC and skipping", oom);
+            System.gc(); // Force garbage collection
+            consecutiveFailures = MAX_CONSECUTIVE_FAILURES; // Disable processing temporarily
         } catch (Exception e) {
             Log.e(TAG, "Error processing video frame - returning original to prevent camera issues", e);
+            consecutiveFailures++;
         }
         
         return frame;
@@ -178,8 +219,12 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
      * Safely clean up bitmap to prevent memory leaks.
      */
     private void cleanupBitmap(Bitmap bitmap) {
-        if (bitmap != null && !bitmap.isRecycled()) {
-            bitmap.recycle();
+        try {
+            if (bitmap != null && !bitmap.isRecycled()) {
+                bitmap.recycle();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error recycling bitmap", e);
         }
     }
     

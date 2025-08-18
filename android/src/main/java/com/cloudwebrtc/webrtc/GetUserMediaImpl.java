@@ -881,11 +881,16 @@ public class GetUserMediaImpl {
                         Log.i(TAG, "Virtual background mode enabled");
                     }
                     
-                    // Add processor to the video track
-                    localVideoTrack.addProcessor(segmentationProcessor);
-                    Log.i(TAG, "Segmentation processor added successfully to video track");
+                    // Add processor to the video track with safety wrapper
+                    try {
+                        localVideoTrack.addProcessor(segmentationProcessor);
+                        Log.i(TAG, "Segmentation processor added successfully to video track");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to add segmentation processor to video track", e);
+                        // Continue without segmentation to prevent app crash
+                    }
                 } else {
-                    Log.e(TAG, "Failed to initialize segmentation processor - check MediaPipe setup");
+                    Log.e(TAG, "Failed to initialize segmentation processor - continuing without background blur");
                 }
             } else {
                 Log.e(TAG, "Segmentation model file not found at: " + modelPath);

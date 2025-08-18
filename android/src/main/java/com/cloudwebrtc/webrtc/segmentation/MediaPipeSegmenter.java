@@ -220,6 +220,7 @@ public class MediaPipeSegmenter {
     
     /**
      * Create a fallback mask that shows the person (center area) and blurs the edges.
+     * For PorterDuff.Mode.DST_OUT: transparent = keep original, opaque = remove/cut out
      */
     @NonNull
     private Bitmap createFallbackMask(int width, int height) {
@@ -232,11 +233,13 @@ public class MediaPipeSegmenter {
             Paint paint = new Paint();
             paint.setAntiAlias(true);
             
-            // Fill with transparent (background will be processed)
-            canvas.drawColor(android.graphics.Color.TRANSPARENT);
+            // Fill with opaque white (background areas will be cut out for blur)
+            canvas.drawColor(android.graphics.Color.WHITE);
             
-            // Draw an ellipse in the center for the person area (opaque)
-            paint.setColor(android.graphics.Color.WHITE);
+            // Draw an ellipse in the center for the person area (transparent - keep original)
+            paint.setColor(android.graphics.Color.TRANSPARENT);
+            paint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR));
+            
             float centerX = width * 0.5f;
             float centerY = height * 0.4f; // Slightly higher than center for typical selfie framing
             float radiusX = width * 0.25f;
@@ -245,15 +248,15 @@ public class MediaPipeSegmenter {
             canvas.drawOval(centerX - radiusX, centerY - radiusY, 
                           centerX + radiusX, centerY + radiusY, paint);
             
-            Log.i(TAG, "Created fallback elliptical mask for segmentation");
+            Log.i(TAG, "Created inverted fallback elliptical mask for segmentation");
             return fallbackBitmap;
             
         } catch (Exception fallbackException) {
             Log.e(TAG, "Fallback bitmap creation also failed", fallbackException);
-            // Last resort: create a simple center mask
+            // Last resort: create a simple background mask (all opaque = all blurred)
             Bitmap simpleMask = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8);
             Canvas canvas = new Canvas(simpleMask);
-            canvas.drawColor(android.graphics.Color.TRANSPARENT);
+            canvas.drawColor(android.graphics.Color.WHITE);
             return simpleMask;
         }
     }

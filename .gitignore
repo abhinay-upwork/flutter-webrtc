@@ -34,3 +34,4 @@ build/
 flutter_build_android.sh
 android/gradle_wrapper.sh
 FLUTTER_SSL_SOLUTION.md
+ANDROID_BLUR_FIX.md

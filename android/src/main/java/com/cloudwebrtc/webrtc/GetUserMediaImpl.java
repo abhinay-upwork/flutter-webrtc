@@ -843,6 +843,8 @@ public class GetUserMediaImpl {
         LocalVideoTrack localVideoTrack = new LocalVideoTrack(track);
         videoSource.setVideoProcessor(localVideoTrack);
 
+        Log.d(TAG, "Source type from constraints: " + sourceType);
+        
         // Add segmentation processing if source type is specified
         if (sourceType != null && (sourceType.equals("blur") || sourceType.equals("image"))) {
             Log.i(TAG, "Setting up segmentation processing with source type: " + sourceType);
@@ -854,25 +856,34 @@ public class GetUserMediaImpl {
             String modelPath = applicationContext.getCacheDir().getAbsolutePath() + "/selfie_segmenter.tflite";
             File modelFile = new File(modelPath);
             
+            Log.d(TAG, "Looking for model file at: " + modelPath);
+            Log.d(TAG, "Model file exists: " + modelFile.exists());
+            
             if (modelFile.exists()) {
+                Log.i(TAG, "Initializing segmentation processor...");
                 boolean initialized = segmentationProcessor.initialize(modelPath);
                 if (initialized) {
                     // Set processing mode
                     if (sourceType.equals("blur")) {
                         segmentationProcessor.setMode(SegmentationProcessor.Mode.BLUR);
+                        Log.i(TAG, "Background blur mode enabled");
                     } else if (sourceType.equals("image")) {
                         segmentationProcessor.setMode(SegmentationProcessor.Mode.VIRTUAL_BACKGROUND);
+                        Log.i(TAG, "Virtual background mode enabled");
                     }
                     
                     // Add processor to the video track
                     localVideoTrack.addProcessor(segmentationProcessor);
-                    Log.i(TAG, "Segmentation processor added successfully");
+                    Log.i(TAG, "Segmentation processor added successfully to video track");
                 } else {
-                    Log.e(TAG, "Failed to initialize segmentation processor");
+                    Log.e(TAG, "Failed to initialize segmentation processor - check MediaPipe setup");
                 }
             } else {
                 Log.e(TAG, "Segmentation model file not found at: " + modelPath);
+                Log.e(TAG, "Please ensure selfie_segmenter.tflite is placed in the app's cache directory");
             }
+        } else {
+            Log.d(TAG, "No background blur requested, sourceType: " + sourceType);
         }
 
         stateProvider.putLocalTrack(track.id(),localVideoTrack);

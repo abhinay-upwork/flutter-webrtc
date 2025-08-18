@@ -88,6 +88,8 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
             return frame;
         }
         
+        Log.d(TAG, "Processing frame with mode: " + currentMode);
+        
         try {
             // Convert VideoFrame to Bitmap
             VideoFrame.I420Buffer i420Buffer = frame.getBuffer().toI420();
@@ -98,12 +100,16 @@ public class SegmentationProcessor implements LocalVideoTrack.ExternalVideoFrame
                 return frame;
             }
             
+            Log.d(TAG, "Input bitmap size: " + inputBitmap.getWidth() + "x" + inputBitmap.getHeight());
+            
             // Run segmentation to get mask
             Bitmap maskBitmap = segmenter.runSegmentation(inputBitmap);
             if (maskBitmap == null) {
                 Log.w(TAG, "Segmentation failed, returning original frame");
                 return frame;
             }
+            
+            Log.d(TAG, "Segmentation successful, mask size: " + maskBitmap.getWidth() + "x" + maskBitmap.getHeight());
             
             // Apply processing based on mode
             Bitmap processedBitmap;

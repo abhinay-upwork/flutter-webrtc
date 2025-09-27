@@ -67,7 +67,9 @@ class _GetUserMediaSampleState extends State<GetUserMediaSample> {
           'minFrameRate': '30',
         },
         'facingMode': 'user',
-        'optional': [],
+        'optional': [
+          {'source': 'blur'}, // Enable background blur for debugging
+        ],
       }
     };
 

@@ -15,7 +15,7 @@ class CameraEventsHandler implements CameraVideoCapturer.CameraEventsHandler {
         FREEZED
     }
     private final static String TAG = FlutterWebRTCPlugin.TAG;
-    private CameraState state = CameraState.NEW;
+    public CameraState state = CameraState.NEW;
 
     public void waitForCameraOpen() {
         Log.d(TAG, "CameraEventsHandler.waitForCameraOpen");
@@ -78,7 +78,7 @@ class CameraEventsHandler implements CameraVideoCapturer.CameraEventsHandler {
     // Callback invoked when camera closed.
     @Override
     public void onCameraClosed() {
-        Log.d(TAG, "CameraEventsHandler.onFirstFrameAvailable");
+        Log.d(TAG, "CameraEventsHandler.onCameraClosed - camera closed successfully");
         state = CameraState.CLOSED;
     }
 }

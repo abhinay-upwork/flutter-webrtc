@@ -89,7 +89,7 @@ public class VideoFrameUtils {
             convertRgbToYuv420(rgbArray, width, height, yBuffer, uBuffer, vBuffer);
             
             // Create I420Buffer
-            return new VideoFrame.I420Buffer() {
+            VideoFrame.I420Buffer i420Buffer = new VideoFrame.I420Buffer() {
                 @Override
                 public int getWidth() {
                     return width;
@@ -152,6 +152,8 @@ public class VideoFrameUtils {
                 }
             };
             
+            return i420Buffer;
+            
         } catch (Exception e) {
             Log.e(TAG, "Failed to convert Bitmap to I420Buffer", e);
             return null;
@@ -167,12 +169,16 @@ public class VideoFrameUtils {
      */
     @Nullable
     public static VideoFrame createVideoFrameFromBitmap(@NonNull Bitmap bitmap, long timestampNs, int originalRotation) {
+        // Convert bitmap to VideoFrame with rotation
+        
         VideoFrame.I420Buffer i420Buffer = bitmapToI420(bitmap);
         if (i420Buffer == null) {
+            Log.e(TAG, "Failed to convert Bitmap to I420Buffer");
             return null;
         }
         
-        return new VideoFrame(i420Buffer, originalRotation, timestampNs);
+        VideoFrame videoFrame = new VideoFrame(i420Buffer, originalRotation, timestampNs);
+        return videoFrame;
     }
     
     /**

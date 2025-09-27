@@ -2043,7 +2043,6 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
       localStreams.remove(streamId);
       removeStreamForRendererById(streamId);
     } else {
-      Log.d(TAG, "streamDispose() mediaStream is null");
     }
   }
 

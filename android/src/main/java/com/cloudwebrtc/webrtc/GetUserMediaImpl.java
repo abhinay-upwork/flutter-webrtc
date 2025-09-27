@@ -718,6 +718,7 @@ public class GetUserMediaImpl {
     }
 
     private ConstraintsMap getUserVideo(ConstraintsMap constraints, MediaStream mediaStream) {
+        Log.d(TAG, "###### getUserVideo called - starting new camera session");
         ConstraintsMap videoConstraintsMap = null;
         ConstraintsMap videoConstraintsMandatory = null;
         if (constraints.getType("video") == ObjectType.Map) {
@@ -728,7 +729,15 @@ public class GetUserMediaImpl {
             }
         }
 
-        Log.i(TAG, "getUserMedia(video): " + videoConstraintsMap);
+        
+        // Dispose existing video capturers to prevent flickering when switching between blur modes
+        if (!mVideoCapturers.isEmpty()) {
+            // Create a copy of the keys to avoid ConcurrentModificationException
+            ArrayList<String> capturerIds = new ArrayList<>(mVideoCapturers.keySet());
+            for (String trackId : capturerIds) {
+                removeVideoCapturer(trackId);
+            }
+        }
 
         // NOTE: to support Camera2, the device should:
         //   1. Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
@@ -835,6 +844,7 @@ public class GetUserMediaImpl {
         }
 
         info.cameraEventsHandler = cameraEventsHandler;
+        
         videoCapturer.startCapture(targetWidth, targetHeight, targetFps);
 
         cameraEventsHandler.waitForCameraOpen();
@@ -852,11 +862,9 @@ public class GetUserMediaImpl {
         LocalVideoTrack localVideoTrack = new LocalVideoTrack(track);
         videoSource.setVideoProcessor(localVideoTrack);
 
-        Log.d(TAG, "Source type from constraints: " + sourceType);
         
         // Add segmentation processing if source type is specified
         if (sourceType != null && (sourceType.equals("blur") || sourceType.equals("image"))) {
-            Log.i(TAG, "Setting up segmentation processing with source type: " + sourceType);
             
             // Create segmentation processor
             SegmentationProcessor segmentationProcessor = new SegmentationProcessor(applicationContext);
@@ -865,26 +873,21 @@ public class GetUserMediaImpl {
             String modelPath = applicationContext.getCacheDir().getAbsolutePath() + "/selfie_segmenter.tflite";
             File modelFile = new File(modelPath);
             
-            Log.d(TAG, "Looking for model file at: " + modelPath);
-            Log.d(TAG, "Model file exists: " + modelFile.exists());
             
             if (modelFile.exists()) {
-                Log.i(TAG, "Initializing segmentation processor...");
                 boolean initialized = segmentationProcessor.initialize(modelPath);
+                
                 if (initialized) {
                     // Set processing mode
                     if (sourceType.equals("blur")) {
                         segmentationProcessor.setMode(SegmentationProcessor.Mode.BLUR);
-                        Log.i(TAG, "Background blur mode enabled");
                     } else if (sourceType.equals("image")) {
                         segmentationProcessor.setMode(SegmentationProcessor.Mode.VIRTUAL_BACKGROUND);
-                        Log.i(TAG, "Virtual background mode enabled");
                     }
                     
                     // Add processor to the video track with safety wrapper
                     try {
                         localVideoTrack.addProcessor(segmentationProcessor);
-                        Log.i(TAG, "Segmentation processor added successfully to video track");
                     } catch (Exception e) {
                         Log.e(TAG, "Failed to add segmentation processor to video track", e);
                         // Continue without segmentation to prevent app crash
@@ -924,22 +927,55 @@ public class GetUserMediaImpl {
     }
 
     void removeVideoCapturer(String id) {
+        Log.d(TAG, "###### removeVideoCapturer called for track: " + id);
         VideoCapturerInfoEx info = mVideoCapturers.get(id);
         if (info != null) {
             try {
+                Log.d(TAG, "###### Stopping camera capture for track: " + id);
                 info.capturer.stopCapture();
                 if (info.cameraEventsHandler != null) {
-                    info.cameraEventsHandler.waitForCameraClosed();
+                    Log.d(TAG, "###### Waiting for camera to close...");
+                    // Add timeout to prevent indefinite blocking
+                    long startTime = System.currentTimeMillis();
+                    long timeout = 3000; // 3 seconds
+                    
+                    while (System.currentTimeMillis() - startTime < timeout) {
+                        try {
+                            Thread.sleep(10);
+                            // Check if camera has closed or errored
+                            if (info.cameraEventsHandler.state == CameraEventsHandler.CameraState.CLOSED ||
+                                info.cameraEventsHandler.state == CameraEventsHandler.CameraState.ERROR ||
+                                info.cameraEventsHandler.state == CameraEventsHandler.CameraState.DISCONNECTED) {
+                                break;
+                            }
+                        } catch (InterruptedException e) {
+                            Log.w(TAG, "Camera close wait interrupted");
+                            break;
+                        }
+                    }
+                    
+                    if (System.currentTimeMillis() - startTime >= timeout) {
+                        Log.w(TAG, "Camera close timeout after 3 seconds - forcing disposal");
+                    }
                 }
-            } catch (InterruptedException e) {
-                Log.e(TAG, "removeVideoCapturer() Failed to stop video capturer");
+            } catch (Exception e) {
+                Log.e(TAG, "removeVideoCapturer() Failed to stop video capturer for track: " + id, e);
             } finally {
-                info.capturer.dispose();
+                try {
+                    info.capturer.dispose();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error disposing video capturer for track: " + id, e);
+                }
+                
                 mVideoCapturers.remove(id);
                 SurfaceTextureHelper helper = mSurfaceTextureHelpers.get(id);
                 if (helper != null) {
-                    helper.stopListening();
-                    helper.dispose();
+                    try {
+                        helper.stopListening();
+                        helper.dispose();
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error disposing SurfaceTextureHelper for track: " + id, e);
+                    }
                     mSurfaceTextureHelpers.remove(id);
                 }
             }

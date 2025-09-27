@@ -55,13 +55,21 @@ public class LocalVideoTrack extends LocalTrack implements VideoProcessor {
 
     @Override
     public void onFrameCaptured(VideoFrame videoFrame) {
+        
         if (sink != null) {
             synchronized (processors) {
                 for (ExternalVideoFrameProcessing processor : processors) {
-                    videoFrame = processor.onFrame(videoFrame);
+                    VideoFrame processedFrame = processor.onFrame(videoFrame);
+                    if (processedFrame == null) {
+                        android.util.Log.e("LocalVideoTrack", "CRITICAL: Processor returned null frame!");
+                        return; // Don't send null frame to sink
+                    }
+                    videoFrame = processedFrame;
                 }
             }
             sink.onFrame(videoFrame);
+        } else {
+            android.util.Log.w("LocalVideoTrack", "No sink available to send frame to");
         }
     }
 }
